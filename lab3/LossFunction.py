@@ -8,6 +8,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import time, pdb, numpy, math
 
+from constants import (
+    AAM_SOFTMAX_INITIALIZATION_MESSAGE,
+    AM_SOFTMAX_INITIALIZATION_MESSAGE,
+    SOFTMAX_INITIALIZATION_MESSAGE,
+)
+
 
 def accuracy(output, target, topk=(1, )):
     # Computes the precision@k for the specified values of k
@@ -37,7 +43,7 @@ class SoftmaxLoss(nn.Module):
         self.criterion  = torch.nn.CrossEntropyLoss()
         self.fc         = nn.Linear(nOut, nClasses)
 
-        print('Initialised softmax loss.')
+        print(SOFTMAX_INITIALIZATION_MESSAGE)
 
     def forward(self, x, label=None):
 
@@ -63,7 +69,12 @@ class AMSoftmaxLoss(nn.Module):
         
         nn.init.xavier_normal_(self.W, gain=1)
 
-        print('Initialised AM softmax m=%.3f s=%.3f.'%(self.m,self.s))
+        print(
+            AM_SOFTMAX_INITIALIZATION_MESSAGE.format(
+                margin=self.m,
+                scale=self.s,
+            )
+        )
 
     def forward(self, x, label=None):
 
@@ -76,12 +87,7 @@ class AMSoftmaxLoss(nn.Module):
         w_norm = torch.div(self.W, w_norm)
         costh = torch.mm(x_norm, w_norm)
         label_view = label.view(-1, 1)
-        
-        if label_view.is_cuda: label_view = label_view.cpu()
-        
-        delt_costh = torch.zeros(costh.size()).scatter_(1, label_view, self.m)
-        
-        if x.is_cuda: delt_costh = delt_costh.cuda()
+        delt_costh = torch.zeros_like(costh).scatter_(1, label_view, self.m)
         
         costh_m = costh - delt_costh
         costh_m_s = self.s*costh_m
@@ -114,7 +120,12 @@ class AAMSoftmaxLoss(nn.Module):
         self.th = math.cos(math.pi - self.m)
         self.mm = math.sin(math.pi - self.m)*self.m
 
-        print('Initialised AAM softmax margin %.3f scale %.3f.'%(self.m,self.s))
+        print(
+            AAM_SOFTMAX_INITIALIZATION_MESSAGE.format(
+                margin=self.m,
+                scale=self.s,
+            )
+        )
 
     def forward(self, x, label=None):
 

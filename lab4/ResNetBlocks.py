@@ -1,14 +1,13 @@
-# The script is borrowed from the following repository: https://github.com/clovaai/voxceleb_trainer
-# The script creates different SE blocks
+# Основа блоков заимствована из проекта voxceleb_trainer:
+# https://github.com/clovaai/voxceleb_trainer
+# Модуль содержит варианты блоков Squeeze-and-Excitation.
 
-
-# Import of modules
 import torch
 import torch.nn as nn
 
 
 class SEBasicBlock(nn.Module):
-    # Create basic SE block
+    """Базовый остаточный блок с Squeeze-and-Excitation."""
 
     expansion = 1
 
@@ -46,7 +45,7 @@ class SEBasicBlock(nn.Module):
         return out
 
 class SEBottleneck(nn.Module):
-    # Create bottleneck SE block
+    """Узкий остаточный блок с Squeeze-and-Excitation."""
 
     expansion = 4
 
@@ -90,7 +89,7 @@ class SEBottleneck(nn.Module):
         return out
 
 class SELayer(nn.Module):
-    # Create SE layer
+    """Слой адаптивного перевзвешивания каналов."""
     
     def __init__(self, channel, reduction=8):
         

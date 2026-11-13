@@ -5,15 +5,22 @@
 # Import of modules
 import torch
 
+from constants import (
+    ONE_CYCLE_INITIALIZATION_MESSAGE,
+    SCHEDULER_STEP_EPOCH,
+    SCHEDULER_STEP_ITERATION,
+    STEP_SCHEDULER_INITIALIZATION_MESSAGE,
+)
+
 
 def StepLRScheduler(optimizer, test_interval, lr_decay, **kwargs):
     # Function to create scheduler
     
     sche_fn = torch.optim.lr_scheduler.StepLR(optimizer, step_size=test_interval, gamma=lr_decay)
 
-    lr_step = 'epoch'
+    lr_step = SCHEDULER_STEP_EPOCH
 
-    print('Initialised step LR scheduler.')
+    print(STEP_SCHEDULER_INITIALIZATION_MESSAGE)
 
     return sche_fn, lr_step
 
@@ -28,8 +35,8 @@ def OneCycleLRScheduler(optimizer, pct_start, cycle_momentum, max_lr, div_factor
                                                   final_div_factor=final_div_factor, 
                                                   total_steps=total_steps)
     
-    lr_step = 'iteration'
+    lr_step = SCHEDULER_STEP_ITERATION
 
-    print('Initialised OneCycle LR scheduler.')
+    print(ONE_CYCLE_INITIALIZATION_MESSAGE)
 
     return sche_fn, lr_step

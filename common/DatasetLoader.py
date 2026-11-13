@@ -46,7 +46,7 @@ def loadWAV(filename, max_frames, evalmode=True, num_eval=10):
         for asf in startframe:
             feats.append(audio[int(asf):int(asf) + max_audio])
 
-    feat = numpy.stack(feats, axis=0).astype(numpy.float)
+    feat = numpy.stack(feats, axis=0).astype(numpy.float32)
 
     return feat
 
@@ -87,11 +87,10 @@ class AugmentWAV(object):
         augment_files   = glob.glob(os.path.join(musan_path, '*/*/*/*.wav'));
 
         for file in augment_files:
-            
-            if not file.split('/')[-4] in self.noiselist:
-                self.noiselist[file.split('/')[-4]] = []
-            
-            self.noiselist[file.split('/')[-4]].append(file)
+            noise_type = os.path.normpath(file).split(os.sep)[-4]
+            if noise_type not in self.noiselist:
+                self.noiselist[noise_type] = []
+            self.noiselist[noise_type].append(file)
 
         self.rir_files  = glob.glob(os.path.join(rir_path, '*/*/*.wav'));
 
@@ -120,7 +119,7 @@ class AugmentWAV(object):
         rir_file = random.choice(self.rir_files)
         
         rir, fs  = soundfile.read(rir_file)
-        rir      = numpy.expand_dims(rir.astype(numpy.float), 0)
+        rir      = numpy.expand_dims(rir.astype(numpy.float32), 0)
         rir      = rir/numpy.sqrt(numpy.sum(rir**2))
 
         return signal.convolve(audio, rir, mode='full')[:, :self.max_audio]

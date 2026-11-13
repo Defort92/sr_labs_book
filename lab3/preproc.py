@@ -6,11 +6,13 @@
 import torch
 import torch.nn.functional as F
 
+from constants import ERROR_PREEMPHASIS_DIMENSIONS, PREEMPHASIS_COEFFICIENT
+
 
 class PreEmphasis(torch.nn.Module):
     # Preemphasis procedure
 
-    def __init__(self, coef: float = 0.97):
+    def __init__(self, coef: float = PREEMPHASIS_COEFFICIENT):
         
         super().__init__()
         
@@ -19,7 +21,8 @@ class PreEmphasis(torch.nn.Module):
 
     def forward(self, input: torch.tensor) -> torch.tensor:
         
-        assert len(input.size()) == 2, 'The number of dimensions of input tensor must be 2!'
+        if len(input.size()) != 2:
+            raise ValueError(ERROR_PREEMPHASIS_DIMENSIONS)
         
         input = input.unsqueeze(1)
         input = F.pad(input, (1, 0), 'reflect')

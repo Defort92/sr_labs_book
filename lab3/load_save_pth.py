@@ -6,6 +6,8 @@ import os
 
 import torch
 
+from constants import CHECKPOINT_FILENAME_TEMPLATE
+
 
 def saveParameters(model, optimizer, scheduler, num_epoch, path):
     # Save parameters
@@ -19,12 +21,14 @@ def saveParameters(model, optimizer, scheduler, num_epoch, path):
     if not os.path.exists(path):
         os.makedirs(path)
     
-    torch.save(checkpoint, os.path.join(path, ''.join(['lab3_model_', str(num_epoch).zfill(4), '.pth'])))
+    filename = CHECKPOINT_FILENAME_TEMPLATE.format(epoch=num_epoch)
+    torch.save(checkpoint, os.path.join(path, filename))
     
 def loadParameters(model, optimizer, scheduler, path):
     # Load parameters
 
-    checkpoint = torch.load(path)
+    device = next(model.parameters()).device
+    checkpoint = torch.load(path, map_location=device, weights_only=False)
     
     model.load_state_dict(checkpoint['model'])
     optimizer.load_state_dict(checkpoint['optimizer'])

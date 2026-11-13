@@ -1,37 +1,47 @@
-# The script downloads model's weights
-# Requirement: wget running on a Linux system 
+# Загрузка весов предобученной модели.
 
-
-# Import of modules
-import os
-import subprocess
 from collections import OrderedDict
+from pathlib import Path
+from urllib.error import URLError
+from urllib.request import urlretrieve
 
 import torch
 
+from constants import (
+    ERROR_MODEL_DOWNLOAD,
+    ERROR_MODEL_WEIGHTS,
+    MODEL_DOWNLOADED_MESSAGE,
+    MODEL_LOADED_MESSAGE,
+    PRETRAINED_MODEL_FILENAME,
+)
+
 
 def load_model(model, lines, save_path, reload=False):
-    # Load model's weights
+    """Загрузить файл весов и применить его к модели."""
     
-    if not os.path.exists(save_path):
-        os.mkdir(save_path, mode=0o777)
+    save_path = Path(save_path)
+    save_path.mkdir(parents=True, exist_ok=True)
 
     for line in lines:
         url     = line.strip()
         outfile = url.split('/')[-1]
+        output_path = save_path / outfile
 
-        out = 0
+        # Загружаем файл только при его отсутствии или явном обновлении.
+        if not output_path.exists() or reload:
+            try:
+                urlretrieve(url, output_path)
+            except (OSError, URLError) as error:
+                raise RuntimeError(ERROR_MODEL_DOWNLOAD.format(url=url)) from error
 
-        # Download files
-        if not os.path.exists(os.path.join(save_path, outfile)) or reload:
-            out = subprocess.call('wget %s -O %s/%s'%(url, save_path, outfile), shell=True)
+        print(MODEL_DOWNLOADED_MESSAGE.format(filename=outfile))
         
-        if out != 0:
-            raise ValueError('Download failed %s. If download fails repeatedly, use alternate URL on the VoxCeleb website.'%url)
-
-        print('File %s is downloaded.'%outfile)
-        
-    checkpoint = torch.load(os.path.join(save_path, 'baseline_v2_ap.model'))
+    device = next(model.parameters()).device
+    checkpoint = torch.load(
+        save_path / PRETRAINED_MODEL_FILENAME,
+        map_location=device,
+        weights_only=False,
+    )
     
     model_weight = OrderedDict()
 
@@ -40,6 +50,9 @@ def load_model(model, lines, save_path, reload=False):
         if '__S__' in key:
             model_weight[key[6:]] = checkpoint[key]
             
+    if not model_weight:
+        raise ValueError(ERROR_MODEL_WEIGHTS)
     model.load_state_dict(model_weight)
+    print(MODEL_LOADED_MESSAGE)
     
     return model

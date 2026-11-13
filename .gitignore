@@ -2,6 +2,10 @@
 data/*
 !data/lists
 
+# Personal theory notes for laboratory works
+lab*/theory.md
+lab*/theory/
+
 #idea files
 .idea
 

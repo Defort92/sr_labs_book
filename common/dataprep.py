@@ -1,9 +1,7 @@
-# The script is borrowed from the following repository: https://github.com/clovaai/voxceleb_trainer
-# The script downloads, extracts and preprocessing the VoxCeleb1 (train and test), SLR17 and SLR28 datasets 
-# Requirement: wget running on a Linux system 
+# Основа модуля заимствована из проекта voxceleb_trainer:
+# https://github.com/clovaai/voxceleb_trainer
+# Модуль загружает, распаковывает и подготавливает наборы данных.
 
-
-# Import of modules
 import os
 import time
 import subprocess
@@ -20,6 +18,21 @@ import soundfile
 from scipy import signal
 import random
 from functools import partial
+
+
+CHECKSUM_SUCCESS_MESSAGE = "Контрольная сумма файла {filename} совпала."
+CHECKSUM_ERROR_MESSAGE = "Контрольная сумма файла {filename} не совпала."
+PROTOCOL_DOWNLOAD_ERROR = (
+    "Не удалось загрузить файл по адресу {url}. Если ошибка повторяется, "
+    "используйте альтернативную ссылку с сайта VoxCeleb."
+)
+FILE_DOWNLOADED_MESSAGE = "Файл {filename} загружен."
+ARCHIVE_EXTRACTED_MESSAGE = "Архив {filename} успешно распакован."
+ARCHIVE_EXTRACTION_MESSAGE = "Распаковка архива {filename}."
+RESULT_FOLDER_CHECK_MESSAGE = "Проверка директории с результатами."
+PROCESSING_START_MESSAGE = "Начата обработка директории {path}."
+PROCESSING_COMPLETE_MESSAGE = "Обработка директории {path} завершена."
+CONVERSION_ERROR_MESSAGE = "Не удалось преобразовать файл {filename}."
 
 
 def check_dir(pth_):
@@ -68,10 +81,10 @@ def download_dataset(lines, user, password, save_path, reload=False):
         # Check MD5
         md5ck = md5('%s/%s'%(save_path, outfile))
         if md5ck == md5gt:
-            print('Checksum successful %s.'%outfile)
+            print(CHECKSUM_SUCCESS_MESSAGE.format(filename=outfile))
         
         else:
-            raise Warning('Checksum failed %s.'%outfile)
+            raise Warning(CHECKSUM_ERROR_MESSAGE.format(filename=outfile))
 
 
 def concatenate(lines, save_path):
@@ -88,10 +101,10 @@ def concatenate(lines, save_path):
         # Check MD5
         md5ck = md5('%s/%s'%(save_path, outfile))
         if md5ck == md5gt:
-            print('Checksum successful %s.'%outfile)
+            print(CHECKSUM_SUCCESS_MESSAGE.format(filename=outfile))
         
         else:
-            raise Warning('Checksum failed %s.'%outfile)
+            raise Warning(CHECKSUM_ERROR_MESSAGE.format(filename=outfile))
 
         out = subprocess.call('rm %s/%s' %(save_path, infile), shell=True)
 
@@ -109,9 +122,9 @@ def download_protocol(lines, save_path, reload=False):
             out = subprocess.call('wget %s -O %s/%s'%(url, save_path, outfile), shell=True)
         
         if out != 0:
-            raise ValueError('Download failed %s. If download fails repeatedly, use alternate URL on the VoxCeleb website.'%url)
+            raise ValueError(PROTOCOL_DOWNLOAD_ERROR.format(url=url))
 
-        print('File %s is downloaded.'%outfile)
+        print(FILE_DOWNLOADED_MESSAGE.format(filename=outfile))
 
 
 def extract_dataset(save_path, fname):
@@ -127,13 +140,13 @@ def extract_dataset(save_path, fname):
         with ZipFile(fname, 'r') as zf:
             zf.extractall(save_path)
 
-    print('Extracting of %s is successful.'%fname)
+    print(ARCHIVE_EXTRACTED_MESSAGE.format(filename=fname))
 
 
 def part_extract(save_path, fname, target):
     # Partially extract zip files
     
-    print('Extracting %s'%fname)
+    print(ARCHIVE_EXTRACTION_MESSAGE.format(filename=fname))
     
     with ZipFile(fname, 'r') as zf:
         
@@ -171,7 +184,7 @@ def run_voxceleb_convert(input_path, result_path, fun, threads=5):
     check_dir(result_path)
     infile_list = []
     outfile_list = []
-    print('Checking result folder')
+    print(RESULT_FOLDER_CHECK_MESSAGE)
 
     for root, dir_list, files_list in os.walk(input_path):
         for i in dir_list:
@@ -183,12 +196,12 @@ def run_voxceleb_convert(input_path, result_path, fun, threads=5):
             outfile_list.append(outfile)
 
     p = Pool(threads)
-    print('Run {} folder processing'.format(input_path))
+    print(PROCESSING_START_MESSAGE.format(path=input_path))
     p.starmap(fun, zip(infile_list, outfile_list))
     p.close()
     p.join()
 
-    print('Finished {} folder processing'.format(input_path))
+    print(PROCESSING_COMPLETE_MESSAGE.format(path=input_path))
 
 
 def get_voxceleb_filelist(input_path):
@@ -208,13 +221,13 @@ def aac_to_wav(infile, outfile):
         'ffmpeg -y -i %s -ac 1 -vn -acodec pcm_s16le -ar 16000 %s >/dev/null 2>/dev/null' % (infile, outfile),
         shell=True)
     if out != 0:
-        raise ValueError('Conversion failed %s.' % infile)
+        raise ValueError(CONVERSION_ERROR_MESSAGE.format(filename=infile))
 
 
 def change_fs(infile, outfile, fs):
     out = subprocess.call('ffmpeg -i %s -ar %s %s >/dev/null 2>/dev/null' % (infile, fs, outfile), shell=True)
     if out != 0:
-        raise ValueError('Conversion failed %s.' % infile)
+        raise ValueError(CONVERSION_ERROR_MESSAGE.format(filename=infile))
 
 
 def apply_mp3_codec(infile, outfile):
@@ -222,13 +235,13 @@ def apply_mp3_codec(infile, outfile):
         'ffmpeg -i %s -f mp3 -ac 1 -b:a 16k pipe: 2>/dev/null | ffmpeg -f mp3 -i pipe: %s >/dev/null 2>/dev/null' % (
         infile, outfile), shell=True)
     if out != 0:
-        raise ValueError('Conversion failed %s.' % infile)
+        raise ValueError(CONVERSION_ERROR_MESSAGE.format(filename=infile))
 
 
 def convert_16_8_16(infile, outfile):
     out = subprocess.call('ffmpeg -i %s -f s16le -ar 8000 pipe: 2>/dev/null | ffmpeg -f s16le -ar 8000 -i pipe: -ar 16000 %s >/dev/null 2>/dev/null'% (infile, outfile), shell=True)
     if out != 0:
-        raise ValueError('Conversion failed %s.' % infile)
+        raise ValueError(CONVERSION_ERROR_MESSAGE.format(filename=infile))
 
 
 def reverberate(infile, outfile, rir_files):

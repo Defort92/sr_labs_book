@@ -1,26 +1,47 @@
-# The script is borrowed from the following repository: https://github.com/clovaai/voxceleb_trainer
-# The script creates ResNetSE model for speaker recognition
+# Основа архитектуры заимствована из проекта voxceleb_trainer:
+# https://github.com/clovaai/voxceleb_trainer
+# Модуль создаёт ResNetSE для распознавания диктора.
 
-
-# Import of modules
 import torch
 import torchaudio
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Parameter
 
-from ResNetBlocks import *
+from ResNetBlocks import SEBasicBlock
 from preproc import PreEmphasis
+from constants import (
+    ATTENTION_HIDDEN_SIZE,
+    EMBEDDING_SIZE,
+    ENCODER_ATTENTIVE_STATISTICS_POOLING,
+    ENCODER_SELF_ATTENTIVE_POOLING,
+    ERROR_UNKNOWN_ENCODER,
+    FEATURE_EPSILON,
+    FFT_SIZE,
+    HOP_LENGTH,
+    MEL_FILTERS,
+    MODEL_INITIALIZATION_MESSAGE,
+    RESNET_FILTERS,
+    RESNET_LAYERS,
+    SAMPLE_RATE,
+    STATISTICS_EPSILON,
+    WINDOW_LENGTH,
+)
 
 
 class ResNetSE(nn.Module):
-    # ResNetSE model for speaker recognition
+    """ResNetSE-модель для построения дикторского эмбеддинга."""
 
-    def __init__(self, block, layers, num_filters, nOut, encoder_type='ASP', n_mels=64, log_input=True, **kwargs):
+    def __init__(self, block, layers, num_filters, nOut, encoder_type=ENCODER_ATTENTIVE_STATISTICS_POOLING, n_mels=MEL_FILTERS, log_input=True, **kwargs):
         
         super(ResNetSE, self).__init__()
 
-        print('Embedding size is %d, encoder %s.'%(nOut, encoder_type))
+        print(
+            MODEL_INITIALIZATION_MESSAGE.format(
+                embedding_size=nOut,
+                encoder_type=encoder_type,
+            )
+        )
         
         self.inplanes     = num_filters[0]
         self.encoder_type = encoder_type
@@ -37,32 +58,37 @@ class ResNetSE(nn.Module):
         self.layer4 = self._make_layer(block, num_filters[3], layers[3], stride=(2, 2))
 
         self.instancenorm   = nn.InstanceNorm1d(n_mels)
-        self.torchfb        = torch.nn.Sequential(PreEmphasis(), 
-                                                  torchaudio.transforms.MelSpectrogram(sample_rate=16000, 
-                                                                                       n_fft=512, 
-                                                                                       win_length=400, 
-                                                                                       hop_length=160, 
-                                                                                       window_fn=torch.hamming_window, 
-                                                                                       n_mels=n_mels)
-                                                  )
+        self.torchfb = torch.nn.Sequential(
+            PreEmphasis(),
+            torchaudio.transforms.MelSpectrogram(
+                sample_rate=SAMPLE_RATE,
+                n_fft=FFT_SIZE,
+                win_length=WINDOW_LENGTH,
+                hop_length=HOP_LENGTH,
+                window_fn=torch.hamming_window,
+                n_mels=n_mels,
+            ),
+        )
 
-        outmap_size = int(self.n_mels/8)
+        outmap_size = (self.n_mels + 7)//8
+        frame_feature_size = num_filters[3]*block.expansion*outmap_size
 
-        self.attention = nn.Sequential(nn.Conv1d(num_filters[3]*outmap_size, 128, kernel_size=1), 
-                                       nn.ReLU(), 
-                                       nn.BatchNorm1d(128), 
-                                       nn.Conv1d(128, num_filters[3]*outmap_size, kernel_size=1), 
-                                       nn.Softmax(dim=2),
-                                       )
+        self.attention = nn.Sequential(
+            nn.Conv1d(frame_feature_size, ATTENTION_HIDDEN_SIZE, kernel_size=1),
+            nn.ReLU(),
+            nn.BatchNorm1d(ATTENTION_HIDDEN_SIZE),
+            nn.Conv1d(ATTENTION_HIDDEN_SIZE, frame_feature_size, kernel_size=1),
+            nn.Softmax(dim=2),
+        )
 
-        if self.encoder_type == "SAP":
-            out_dim = num_filters[3]*outmap_size
+        if self.encoder_type == ENCODER_SELF_ATTENTIVE_POOLING:
+            out_dim = frame_feature_size
         
-        elif self.encoder_type == "ASP":
-            out_dim = num_filters[3]*outmap_size*2
+        elif self.encoder_type == ENCODER_ATTENTIVE_STATISTICS_POOLING:
+            out_dim = frame_feature_size*2
         
         else:
-            raise ValueError('Undefined encoder')
+            raise ValueError(ERROR_UNKNOWN_ENCODER.format(encoder_type=encoder_type))
 
         self.fc = nn.Linear(out_dim, nOut)
 
@@ -101,13 +127,11 @@ class ResNetSE(nn.Module):
     def forward(self, x):
 
         with torch.no_grad():
-            
-            with torch.cuda.amp.autocast(enabled=False):
-                x = self.torchfb(x) + 1e-6
-                
-                if self.log_input: x = x.log()
-                
-                x = self.instancenorm(x).unsqueeze(1)
+            x = self.torchfb(x.float()) + FEATURE_EPSILON
+
+            if self.log_input: x = x.log()
+
+            x = self.instancenorm(x).unsqueeze(1)
 
         x = self.conv1(x)
         x = self.relu(x)
@@ -122,12 +146,12 @@ class ResNetSE(nn.Module):
 
         w = self.attention(x)
 
-        if self.encoder_type == "SAP":
+        if self.encoder_type == ENCODER_SELF_ATTENTIVE_POOLING:
             x = torch.sum(x*w, dim=2)
         
-        elif self.encoder_type == "ASP":
+        elif self.encoder_type == ENCODER_ATTENTIVE_STATISTICS_POOLING:
             mu = torch.sum(x*w, dim=2)
-            sg = torch.sqrt((torch.sum((x**2)*w, dim=2) - mu**2).clamp(min=1e-5))
+            sg = torch.sqrt((torch.sum((x**2)*w, dim=2) - mu**2).clamp(min=STATISTICS_EPSILON))
             x  = torch.cat((mu,sg), 1)
 
         x = x.view(x.size()[0], -1)
@@ -135,11 +159,9 @@ class ResNetSE(nn.Module):
 
         return x
 
-def MainModel(nOut=512, **kwargs):
-    # Create main model for speaker recognition
+def MainModel(nOut=EMBEDDING_SIZE, **kwargs):
+    """Создать основную модель распознавания диктора."""
     
-    num_filters = [32, 64, 128, 256]
-    
-    model = ResNetSE(SEBasicBlock, [3, 4, 6, 3], num_filters, nOut, **kwargs)
+    model = ResNetSE(SEBasicBlock, RESNET_LAYERS, RESNET_FILTERS, nOut, **kwargs)
     
     return model
